@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>智慧教室监控与控制平台</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f5f7fa;
+    }
+    .dashboard-card {
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .dashboard-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+    }
+    .status-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+    .status-normal {
+      background-color: #28a745;
+    }
+    .status-warning {
+      background-color: #ffc107;
+    }
+    .status-danger {
+      background-color: #dc3545;
+    }
+    .parameter-value {
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+    .parameter-label {
+      font-size: 0.9rem;
+      color: #6c757d;
+    }
+    .control-btn {
+      transition: all 0.3s ease;
+    }
+    .control-btn:hover {
+      transform: scale(1.05);
+    }
+    .card-header {
+      background-color: #f8f9fa;
+      border-bottom: 1px solid #e9ecef;
+    }
+    .nav-link {
+      cursor: pointer;
+    }
+    .nav-link.active {
+      font-weight: bold;
+      color: #0d6efd !important;
+    }
+    .attendance-list {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .attendance-item {
+      border-bottom: 1px solid #e9ecef;
+      padding: 10px 0;
+    }
+    .attendance-item:last-child {
+      border-bottom: none;
+    }
+    .chart-container {
+      position: relative;
+      height: 300px;
+      width: 100%;
+    }
+    @media (max-width: 768px) {
+      .parameter-value {
+        font-size: 1.2rem;
+      }
+      .chart-container {
+        height: 250px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container-fluid p-4">
+    <h1 class="text-center mb-4">智慧教室监控与控制平台</h1>
+    
+    <!-- 导航标签 -->
+    <ul class="nav nav-tabs mb-4" id="dashboardTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="environment-tab" data-bs-toggle="tab" data-bs-target="#environment" type="button" role="tab" aria-controls="environment" aria-selected="true">环境监控</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="attendance-tab" data-bs-toggle="tab" data-bs-target="#attendance" type="button" role="tab" aria-controls="attendance" aria-selected="false">学生打卡</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="control-tab" data-bs-toggle="tab" data-bs-target="#control" type="button" role="tab" aria-controls="control" aria-selected="false">远程控制</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#history" type="button" role="tab" aria-controls="history" aria-selected="false">历史数据</button>
+      </li>
+    </ul>
+    
+    <!-- 标签内容 -->
+    <div class="tab-content" id="dashboardTabsContent">
+      <!-- 环境监控标签 -->
+      <div class="tab-pane fade show active" id="environment" role="tabpanel" aria-labelledby="environment-tab">
+        <div class="row g-4">
+          <!-- 温度卡片 -->
+          <div class="col-md-3">
+            <div class="card dashboard-card">
+              <div class="card-header">
+                <h5 class="card-title">温度</h5>
+              </div>
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <span class="status-indicator" id="temp-status"></span>
+                  <span class="parameter-value" id="temp-value">--</span>
+                  <span class="ms-2">°C</span>
+                </div>
+                <p class="parameter-label mt-2">正常范围: 20-28°C</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 湿度卡片 -->
+          <div class="col-md-3">
+            <div class="card dashboard-card">
+              <div class="card-header">
+                <h5 class="card-title">湿度</h5>
+              </div>
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <span class="status-indicator" id="hum-status"></span>
+                  <span class="parameter-value" id="hum-value">--</span>
+                  <span class="ms-2">%</span>
+                </div>
+                <p class="parameter-label mt-2">正常范围: 40-60%</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 光照卡片 -->
+          <div class="col-md-3">
+            <div class="card dashboard-card">
+              <div class="card-header">
+                <h5 class="card-title">光照强度</h5>
+              </div>
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <span class="status-indicator" id="light-status"></span>
+                  <span class="parameter-value" id="light-value">--</span>
+                  <span class="ms-2">%</span>
+                </div>
+                <p class="parameter-label mt-2">正常范围: 30-70%</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- CO2卡片 -->
+          <div class="col-md-3">
+            <div class="card dashboard-card">
+              <div class="card-header">
+                <h5 class="card-title">二氧化碳</h5>
+              </div>
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <span class="status-indicator" id="co2-status"></span>
+                  <span class="parameter-value" id="co2-value">--</span>
+                  <span class="ms-2">ppm</span>
+                </div>
+                <p class="parameter-label mt-2">正常范围: < 1000ppm</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 实时数据图表 -->
+        <div class="card dashboard-card mt-4">
+          <div class="card-header">
+            <h5 class="card-title">环境数据趋势</h5>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="environmentChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 学生打卡标签 -->
+      <div class="tab-pane fade" id="attendance" role="tabpanel" aria-labelledby="attendance-tab">
+        <div class="card dashboard-card">
+          <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+              <h5 class="card-title">学生打卡记录</h5>
+              <div class="d-flex gap-2">
+                <input type="date" class="form-control" id="attendance-date" value="">
+                <button class="btn btn-primary" id="filter-attendance">筛选</button>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="attendance-list">
+              <div id="attendance-records">
+                <!-- 打卡记录将通过JavaScript动态添加 -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 远程控制标签 -->
+      <div class="tab-pane fade" id="control" role="tabpanel" aria-labelledby="control-tab">
+        <div class="row g-4">
+          <!-- 风扇控制 -->
+          <div class="col-md-6">
+            <div class="card dashboard-card">
+              <div class="card-header">
+                <h5 class="card-title">风扇控制</h5>
+              </div>
+              <div class="card-body">
+                <div class="d-flex flex-column gap-4">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <span>当前状态:</span>
+                    <span class="font-weight-bold" id="fan-status">--</span>
+                  </div>
+                  <div class="d-flex gap-2">
+                    <button class="btn btn-success control-btn flex-fill" id="fan-on">开启</button>
+                    <button class="btn btn-danger control-btn flex-fill" id="fan-off">关闭</button>
+                    <button class="btn btn-secondary control-btn flex-fill" id="fan-auto">自动</button>
+                  </div>
+                  <div>
+                    <label for="fan-speed" class="form-label">风速调节</label>
+                    <input type="range" class="form-range" id="fan-speed" min="1" max="3" value="2">
+                    <div class="d-flex justify-content-between">
+                      <span>低速</span>
+                      <span>中速</span>
+                      <span>高速</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 舵机控制 -->
+          <div class="col-md-6">
+            <div class="card dashboard-card">
+              <div class="card-header">
+                <h5 class="card-title">窗帘控制</h5>
+              </div>
+              <div class="card-body">
+                <div class="d-flex flex-column gap-4">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <span>当前角度:</span>
+                    <span class="font-weight-bold" id="servo-angle">--°</span>
+                  </div>
+                  <div>
+                    <label for="servo-control" class="form-label">角度调节</label>
+                    <input type="range" class="form-range" id="servo-control" min="0" max="90" value="0">
+                    <div class="d-flex justify-content-between">
+                      <span>关闭 (0°)</span>
+                      <span>打开 (90°)</span>
+                    </div>
+                  </div>
+                  <div class="d-flex gap-2">
+                    <button class="btn btn-primary control-btn flex-fill" id="servo-open">完全打开</button>
+                    <button class="btn btn-primary control-btn flex-fill" id="servo-close">完全关闭</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 控制状态反馈 -->
+        <div class="card dashboard-card mt-4">
+          <div class="card-header">
+            <h5 class="card-title">控制状态反馈</h5>
+          </div>
+          <div class="card-body">
+            <div class="alert alert-info" role="alert" id="control-feedback">
+              等待控制指令...
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 历史数据标签 -->
+      <div class="tab-pane fade" id="history" role="tabpanel" aria-labelledby="history-tab">
+        <div class="card dashboard-card">
+          <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+              <h5 class="card-title">历史数据查询</h5>
+              <div class="d-flex gap-2">
+                <input type="date" class="form-control" id="history-start-date" value="">
+                <input type="date" class="form-control" id="history-end-date" value="">
+                <button class="btn btn-primary" id="query-history">查询</button>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="historyChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 系统状态 -->
+    <div class="mt-4 text-center text-muted" id="system-status">
+      系统状态: 连接中...
+    </div>
+  </div>
+  
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mqtt@4.3.7/dist/mqtt.min.js"></script>
+  <script>
+    // 全局变量
+    let client;
+    let environmentChart;
+    let historyChart;
+    let attendanceRecords = [];
+    let environmentData = {
+      labels: [],
+      datasets: [
+        {
+          label: '温度 (°C)',
+          data: [],
+          borderColor: 'rgb(255, 99, 132)',
+          backgroundColor: 'rgba(255, 99, 132, 0.1)',
+          tension: 0.4
+        },
+        {
+          label: '湿度 (%)',
+          data: [],
+          borderColor: 'rgb(54, 162, 235)',
+          backgroundColor: 'rgba(54, 162, 235, 0.1)',
+          tension: 0.4
+        },
+        {
+          label: '光照 (%)',
+          data: [],
+          borderColor: 'rgb(255, 205, 86)',
+          backgroundColor: 'rgba(255, 205, 86, 0.1)',
+          tension: 0.4
+        },
+        {
+          label: 'CO2 (ppm)',
+          data: [],
+          borderColor: 'rgb(75, 192, 192)',
+          backgroundColor: 'rgba(75, 192, 192, 0.1)',
+          tension: 0.4
+        }
+      ]
+    };
+    
+    // 初始化页面
+    document.addEventListener('DOMContentLoaded', function() {
+      // 设置默认日期
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('attendance-date').value = today;
+      document.getElementById('history-start-date').value = today;
+      document.getElementById('history-end-date').value = today;
+      
+      // 初始化图表
+      initCharts();
+      
+      // 连接MQTT
+      connectMQTT();
+      
+      // 绑定事件
+      bindEvents();
+    });
+    
+    // 初始化图表
+    function initCharts() {
+      // 环境数据趋势图表
+      const envCtx = document.getElementById('environmentChart').getContext('2d');
+      environmentChart = new Chart(envCtx, {
+        type: 'line',
+        data: environmentData,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: false
+            }
+          },
+          animation: false
+        }
+      });
+      
+      // 历史数据图表
+      const histCtx = document.getElementById('historyChart').getContext('2d');
+      historyChart = new Chart(histCtx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: '温度 (°C)',
+              data: [],
+              borderColor: 'rgb(255, 99, 132)',
+              backgroundColor: 'rgba(255, 99, 132, 0.1)',
+              tension: 0.4
+            },
+            {
+              label: '湿度 (%)',
+              data: [],
+              borderColor: 'rgb(54, 162, 235)',
+              backgroundColor: 'rgba(54, 162, 235, 0.1)',
+              tension: 0.4
+            },
+            {
+              label: 'CO2 (ppm)',
+              data: [],
+              borderColor: 'rgb(75, 192, 192)',
+              backgroundColor: 'rgba(75, 192, 192, 0.1)',
+              tension: 0.4
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: false
+            }
+          }
+        }
+      });
+    }
+    
+    // 连接MQTT
+    function connectMQTT() {
+      // 巴法云MQTT配置
+      const mqtt_server = 'bemfa.com';
+      const mqtt_port = 9501;
+      const UID = '8a4623632890437b916c4e67770cfd29';
+      
+      // 主题
+      const topic_data = 'classdata';
+      const topic_rfid = 'classRFID';
+      const topic_relay = 'classrelay002';
+      
+      // 连接MQTT
+      client = mqtt.connect(`mqtt://${mqtt_server}:${mqtt_port}`, {
+        clientId: UID
+      });
+      
+      // 连接成功
+      client.on('connect', function() {
+        console.log('MQTT连接成功');
+        document.getElementById('system-status').textContent = '系统状态: 已连接';
+        
+        // 订阅主题
+        client.subscribe(topic_data);
+        client.subscribe(topic_rfid);
+      });
+      
+      // 接收消息
+      client.on('message', function(topic, message) {
+        console.log(`收到主题: ${topic}, 消息: ${message.toString()}`);
+        
+        if (topic === topic_data) {
+          // 处理环境数据
+          handleEnvironmentData(message.toString());
+        } else if (topic === topic_rfid) {
+          // 处理刷卡数据
+          handleAttendanceData(message.toString());
+        }
+      });
+      
+      // 连接错误
+      client.on('error', function(error) {
+        console.error('MQTT连接错误:', error);
+        document.getElementById('system-status').textContent = '系统状态: 连接错误';
+      });
+      
+      // 断开连接
+      client.on('close', function() {
+        console.log('MQTT连接断开');
+        document.getElementById('system-status').textContent = '系统状态: 连接断开';
+        // 尝试重连
+        setTimeout(connectMQTT, 5000);
+      });
+    }
+    
+    // 处理环境数据
+    function handleEnvironmentData(data) {
+      try {
+        const envData = JSON.parse(data);
+        
+        // 更新界面
+        updateEnvironmentUI(envData);
+        
+        // 更新图表
+        updateEnvironmentChart(envData);
+      } catch (error) {
+        console.error('解析环境数据错误:', error);
+      }
+    }
+    
+    // 处理刷卡数据
+    function handleAttendanceData(data) {
+      const studentName = data;
+      const timestamp = new Date().toLocaleString();
+      
+      // 添加到记录
+      attendanceRecords.unshift({ name: studentName, time: timestamp });
+      
+      // 更新界面
+      updateAttendanceUI();
+    }
+    
+    // 更新环境数据UI
+    function updateEnvironmentUI(data) {
+      // 温度
+      document.getElementById('temp-value').textContent = data.temp;
+      document.getElementById('temp-status').className = getStatusClass(data.temp, 20, 28);
+      
+      // 湿度
+      document.getElementById('hum-value').textContent = data.hum;
+      document.getElementById('hum-status').className = getStatusClass(data.hum, 40, 60);
+      
+      // 光照
+      document.getElementById('light-value').textContent = data.light;
+      document.getElementById('light-status').className = getStatusClass(data.light, 30, 70);
+      
+      // CO2
+      document.getElementById('co2-value').textContent = data.co2;
+      document.getElementById('co2-status').className = getStatusClass(data.co2, 0, 1000, true);
+    }
+    
+    // 获取状态类
+    function getStatusClass(value, min, max, inverse = false) {
+      if (inverse) {
+        if (value <= max) return 'status-indicator status-normal';
+        if (value <= max * 1.5) return 'status-indicator status-warning';
+        return 'status-indicator status-danger';
+      } else {
+        if (value >= min && value <= max) return 'status-indicator status-normal';
+        if (value >= min * 0.8 && value <= max * 1.2) return 'status-indicator status-warning';
+        return 'status-indicator status-danger';
+      }
+    }
+    
+    // 更新环境数据图表
+    function updateEnvironmentChart(data) {
+      const now = new Date().toLocaleTimeString();
+      
+      // 添加数据点
+      environmentData.labels.push(now);
+      environmentData.datasets[0].data.push(data.temp);
+      environmentData.datasets[1].data.push(data.hum);
+      environmentData.datasets[2].data.push(data.light);
+      environmentData.datasets[3].data.push(data.co2);
+      
+      // 保持数据点数量在20个以内
+      if (environmentData.labels.length > 20) {
+        environmentData.labels.shift();
+        environmentData.datasets.forEach(dataset => dataset.data.shift());
+      }
+      
+      // 更新图表
+      environmentChart.update();
+    }
+    
+    // 更新打卡记录UI
+    function updateAttendanceUI() {
+      const recordsContainer = document.getElementById('attendance-records');
+      recordsContainer.innerHTML = '';
+      
+      attendanceRecords.forEach(record => {
+        const recordElement = document.createElement('div');
+        recordElement.className = 'attendance-item';
+        recordElement.innerHTML = `
+          <div class="d-flex justify-content-between align-items-center">
+            <span class="font-weight-bold">${record.name}</span>
+            <span>${record.time}</span>
+          </div>
+        `;
+        recordsContainer.appendChild(recordElement);
+      });
+    }
+    
+    // 绑定事件
+    function bindEvents() {
+      // 风扇控制
+      document.getElementById('fan-on').addEventListener('click', function() {
+        sendControlCommand('classrelay002', 'on');
+        document.getElementById('fan-status').textContent = '开启';
+      });
+      
+      document.getElementById('fan-off').addEventListener('click', function() {
+        sendControlCommand('classrelay002', 'off');
+        document.getElementById('fan-status').textContent = '关闭';
+      });
+      
+      document.getElementById('fan-auto').addEventListener('click', function() {
+        sendControlCommand('classrelay002', 'auto');
+        document.getElementById('fan-status').textContent = '自动';
+      });
+      
+      // 窗帘控制
+      document.getElementById('servo-open').addEventListener('click', function() {
+        document.getElementById('servo-control').value = 90;
+        document.getElementById('servo-angle').textContent = '90°';
+        // 这里可以添加发送舵机控制指令的代码
+      });
+      
+      document.getElementById('servo-close').addEventListener('click', function() {
+        document.getElementById('servo-control').value = 0;
+        document.getElementById('servo-angle').textContent = '0°';
+        // 这里可以添加发送舵机控制指令的代码
+      });
+      
+      document.getElementById('servo-control').addEventListener('input', function() {
+        const angle = this.value;
+        document.getElementById('servo-angle').textContent = `${angle}°`;
+        // 这里可以添加发送舵机控制指令的代码
+      });
+      
+      // 筛选打卡记录
+      document.getElementById('filter-attendance').addEventListener('click', function() {
+        const date = document.getElementById('attendance-date').value;
+        // 这里可以添加按日期筛选打卡记录的代码
+        showControlFeedback(`已筛选 ${date} 的打卡记录`);
+      });
+      
+      // 查询历史数据
+      document.getElementById('query-history').addEventListener('click', function() {
+        const startDate = document.getElementById('history-start-date').value;
+        const endDate = document.getElementById('history-end-date').value;
+        // 这里可以添加查询历史数据的代码
+        showControlFeedback(`已查询 ${startDate} 至 ${endDate} 的历史数据`);
+        // 模拟历史数据
+        updateHistoryChart();
+      });
+    }
+    
+    // 发送控制指令
+    function sendControlCommand(topic, message) {
+      if (client && client.connected) {
+        client.publish(topic, message);
+        showControlFeedback(`已发送指令: ${message} 到 ${topic}`);
+      } else {
+        showControlFeedback('MQTT未连接，无法发送指令', 'danger');
+      }
+    }
+    
+    // 显示控制反馈
+    function showControlFeedback(message, type = 'info') {
+      const feedbackElement = document.getElementById('control-feedback');
+      feedbackElement.className = `alert alert-${type}`;
+      feedbackElement.textContent = message;
+      
+      // 3秒后恢复默认状态
+      setTimeout(function() {
+        feedbackElement.className = 'alert alert-info';
+        feedbackElement.textContent = '等待控制指令...';
+      }, 3000);
+    }
+    
+    // 更新历史数据图表（模拟）
+    function updateHistoryChart() {
+      const labels = [];
+      const tempData = [];
+      const humData = [];
+      const co2Data = [];
+      
+      // 生成模拟数据
+      for (let i = 0; i < 24; i++) {
+        labels.push(`${i}:00`);
+        tempData.push(22 + Math.random() * 6);
+        humData.push(45 + Math.random() * 10);
+        co2Data.push(800 + Math.random() * 400);
+      }
+      
+      // 更新图表
+      historyChart.data.labels = labels;
+      historyChart.data.datasets[0].data = tempData;
+      historyChart.data.datasets[1].data = humData;
+      historyChart.data.datasets[2].data = co2Data;
+      historyChart.update();
+    }
+  </script>
+</body>
+</html>
