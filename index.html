@@ -128,94 +128,78 @@
     <script>
         // === 巴法云配置 ===
         const UID = "8a4623632890437b916c4e67770cfd29"; // 你的私钥
-        const TOPICS = "classdata,classRFID";           // 需要监听接收的主题
-        let ws;
-        let pingInterval;
+        const TOPIC_DATA = "classdata";
+        const TOPIC_RFID = "classRFID";
 
-        // 初始化 WebSocket 连接
-        function initWebSocket() {
-            ws = new WebSocket("wss://bemfa.com:9503");
-
-            ws.onopen = function() {
-                console.log("WebSocket 连接成功！");
-                document.getElementById('conn-status').innerHTML = '<i class="fas fa-wifi"></i> 云端在线';
-                document.getElementById('conn-status').classList.add('online');
-                
-                // 1. 发送订阅指令
-                let subStr = `cmd=1&uid=${UID}&topic=${TOPICS}\r\n`;
-                ws.send(subStr);
-
-                // 2. 开启心跳保活 (每30秒发一次 ping)
-                pingInterval = setInterval(() => {
-                    ws.send("ping\r\n");
-                }, 30000);
-            };
-
-            ws.onmessage = function(event) {
-                let msgData = event.data;
-                console.log("收到云端数据:", msgData);
-
-                // 解析巴法云返回的字符串格式: cmd=2&uid=xxx&topic=xxx&msg=xxx
-                if (msgData.includes("cmd=2")) {
-                    let topicMatch = msgData.match(/topic=(.*?)(&|\r\n|$)/);
-                    let msgMatch = msgData.match(/msg=(.*?)(\r\n|$)/);
-                    
-                    if (topicMatch && msgMatch) {
-                        let topic = topicMatch[1];
-                        let payload = msgMatch[1];
-
-                        // 处理环境数据 (JSON)
-                        if (topic === "classdata") {
-                            try {
-                                let data = JSON.parse(payload);
-                                document.getElementById('val-temp').innerText = data.temp.toFixed(1) + " ℃";
-                                document.getElementById('val-hum').innerText = data.hum.toFixed(1) + " %";
-                                document.getElementById('val-light').innerText = data.light + " %";
-                                document.getElementById('val-co2').innerText = data.co2 + " ppm";
-                                
-                                // CO2 颜色警告
-                                document.getElementById('val-co2').style.color = data.co2 > 1000 ? "var(--danger)" : "var(--dark)";
-                            } catch (e) {
-                                console.error("JSON解析失败", e);
-                            }
-                        }
-                        
-                        // 处理刷卡数据 (纯文本)
-                        if (topic === "classRFID") {
-                            document.getElementById('val-rfid').innerText = payload;
-                            let now = new Date();
-                            document.getElementById('val-rfid-time').innerText = "打卡时间: " + now.getHours() + ":" + String(now.getMinutes()).padStart(2, '0') + ":" + String(now.getSeconds()).padStart(2, '0');
-                        }
-                    }
-                }
-            };
-
-            ws.onclose = function() {
-                console.log("WebSocket 连接断开，3秒后重连...");
-                document.getElementById('conn-status').innerHTML = '<i class="fas fa-exclamation-triangle"></i> 离线重连中';
-                document.getElementById('conn-status').classList.remove('online');
-                clearInterval(pingInterval);
-                setTimeout(initWebSocket, 3000);
-            };
-        }
-
-        // 发送控制指令到硬件
-        function sendCmd(topic, command) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                // 巴法云下发指令格式: cmd=2&uid=xxx&topic=xxx&msg=xxx
-                let pushStr = `cmd=2&uid=${UID}&topic=${topic}&msg=${command}\r\n`;
-                ws.send(pushStr);
-                
-                // 简单的 UI 交互反馈 (弹窗提示)
-                let deviceName = topic === "classrelay002" ? "风扇" : "窗帘";
-                console.log(`已向 ${deviceName} 发送指令: ${command}`);
+        // 更新 UI 在线状态
+        function setOnlineStatus(isOnline) {
+            const statusDiv = document.getElementById('conn-status');
+            if (isOnline) {
+                statusDiv.innerHTML = '<i class="fas fa-wifi"></i> HTTP 云端在线';
+                statusDiv.classList.add('online');
             } else {
-                alert("网络未连接，指令发送失败！");
+                statusDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 连接超时';
+                statusDiv.classList.remove('online');
             }
         }
 
-        // 页面加载完成后启动
-        window.onload = initWebSocket;
+        // 核心功能 1：获取云端数据 (每 3 秒执行一次)
+        async function fetchCloudData() {
+            try {
+                // 1. 获取传感器数据
+                let resData = await fetch(`https://api.bemfa.com/api/device/v1/data/1/get/?uid=${UID}&topic=${TOPIC_DATA}&num=1`);
+                let jsonData = await resData.json();
+                
+                if (jsonData.data && jsonData.data.length > 0) {
+                    let payload = JSON.parse(jsonData.data[0].msg);
+                    document.getElementById('val-temp').innerText = payload.temp.toFixed(1) + " ℃";
+                    document.getElementById('val-hum').innerText = payload.hum.toFixed(1) + " %";
+                    document.getElementById('val-light').innerText = payload.light + " %";
+                    document.getElementById('val-co2').innerText = payload.co2 + " ppm";
+                    // CO2 颜色警告
+                    document.getElementById('val-co2').style.color = payload.co2 > 1000 ? "var(--danger)" : "var(--dark)";
+                }
+
+                // 2. 获取打卡数据
+                let resRfid = await fetch(`https://api.bemfa.com/api/device/v1/data/1/get/?uid=${UID}&topic=${TOPIC_RFID}&num=1`);
+                let jsonRfid = await resRfid.json();
+                
+                if (jsonRfid.data && jsonRfid.data.length > 0) {
+                    document.getElementById('val-rfid').innerText = jsonRfid.data[0].msg;
+                    document.getElementById('val-rfid-time').innerText = "打卡时间: " + jsonRfid.data[0].time; 
+                }
+
+                setOnlineStatus(true); // 成功获取数据，点亮在线图标
+            } catch (error) {
+                console.error("获取数据失败，可能网络波动:", error);
+                setOnlineStatus(false);
+            }
+        }
+
+        // 核心功能 2：发送控制指令到硬件 (已添加完善的错误捕获)
+        async function sendCmd(topic, command) {
+            let url = `https://api.bemfa.com/api/device/v1/data/1/push/get/?uid=${UID}&topic=${topic}&msg=${command}`;
+            try {
+                let response = await fetch(url);
+                if(response.ok) {
+                    let deviceName = topic === "classrelay002" ? "风扇" : "窗帘";
+                    console.log(`[HTTP 强控] 已向 ${deviceName} 发送指令: ${command}`);
+                    let btnText = command === "on" ? "已发送开启" : (command === "off" ? "已发送关闭" : "已发送自动");
+                    alert(`✅ 指令 [${btnText}] 已成功发送至硬件！\n设备名: ${deviceName}`);
+                } else {
+                    alert("❌ 控制指令发送失败，服务器响应异常！");
+                }
+            } catch (error) {
+                alert("❌ 控制指令发送失败，请检查网络！");
+                console.error(error);
+            }
+        }
+
+        // 页面加载完成后，立刻拉取一次数据，并开启定时轮询
+        window.onload = function() {
+            fetchCloudData(); // 马上执行一次
+            setInterval(fetchCloudData, 3000); // 之后每 3 秒刷新一次
+        };
     </script>
 </body>
 </html>
