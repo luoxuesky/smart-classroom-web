@@ -127,41 +127,43 @@
 
     <script>
         // === 巴法云配置 ===
-        const UID = "8a4623632890437b916c4e67770cfd29"; // 你的私钥
+        const UID = "8a4623632890437b916c4e67770cfd29"; 
         const TOPIC_DATA = "classdata";
         const TOPIC_RFID = "classRFID";
 
-        // 更新 UI 在线状态
         function setOnlineStatus(isOnline) {
             const statusDiv = document.getElementById('conn-status');
             if (isOnline) {
                 statusDiv.innerHTML = '<i class="fas fa-wifi"></i> HTTP 云端在线';
                 statusDiv.classList.add('online');
             } else {
-                statusDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 连接超时';
+                statusDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 网络被拦截';
                 statusDiv.classList.remove('online');
             }
         }
 
-        // 核心功能 1：获取云端数据 (每 3 秒执行一次)
         async function fetchCloudData() {
             try {
-                // 1. 获取传感器数据
-                let resData = await fetch(`https://api.bemfa.com/api/device/v1/data/1/get/?uid=${UID}&topic=${TOPIC_DATA}&num=1`);
+                // ⚠️ 绝杀技：加入 { cache: 'no-store' }，强制浏览器每次都去拿新数据
+                let resData = await fetch(`https://api.bemfa.com/api/device/v1/data/3/get/?uid=${UID}&topic=${TOPIC_DATA}&num=1`, { cache: 'no-store' });
                 let jsonData = await resData.json();
                 
                 if (jsonData.data && jsonData.data.length > 0) {
-                    let payload = JSON.parse(jsonData.data[0].msg);
-                    document.getElementById('val-temp').innerText = payload.temp.toFixed(1) + " ℃";
-                    document.getElementById('val-hum').innerText = payload.hum.toFixed(1) + " %";
-                    document.getElementById('val-light').innerText = payload.light + " %";
-                    document.getElementById('val-co2').innerText = payload.co2 + " ppm";
-                    // CO2 颜色警告
-                    document.getElementById('val-co2').style.color = payload.co2 > 1000 ? "var(--danger)" : "var(--dark)";
+                    let rawMsg = jsonData.data[0].msg;
+                    try {
+                        let payload = JSON.parse(rawMsg);
+                        document.getElementById('val-temp').innerText = payload.temp.toFixed(1) + " ℃";
+                        document.getElementById('val-hum').innerText = payload.hum.toFixed(1) + " %";
+                        document.getElementById('val-light').innerText = payload.light + " %";
+                        document.getElementById('val-co2').innerText = payload.co2 + " ppm";
+                        document.getElementById('val-co2').style.color = payload.co2 > 1000 ? "var(--danger)" : "var(--dark)";
+                    } catch (parseError) {
+                        console.warn("跳过不合规数据:", rawMsg);
+                    }
                 }
 
-                // 2. 获取打卡数据
-                let resRfid = await fetch(`https://api.bemfa.com/api/device/v1/data/1/get/?uid=${UID}&topic=${TOPIC_RFID}&num=1`);
+                // ⚠️ 同样加入反缓存策略
+                let resRfid = await fetch(`https://api.bemfa.com/api/device/v1/data/3/get/?uid=${UID}&topic=${TOPIC_RFID}&num=1`, { cache: 'no-store' });
                 let jsonRfid = await resRfid.json();
                 
                 if (jsonRfid.data && jsonRfid.data.length > 0) {
@@ -169,18 +171,17 @@
                     document.getElementById('val-rfid-time').innerText = "打卡时间: " + jsonRfid.data[0].time; 
                 }
 
-                setOnlineStatus(true); // 成功获取数据，点亮在线图标
+                setOnlineStatus(true);
             } catch (error) {
-                console.error("获取数据失败，可能网络波动:", error);
+                console.error("网络请求失败，可能是电脑本地拦截:", error);
                 setOnlineStatus(false);
             }
         }
 
-        // 核心功能 2：发送控制指令到硬件 (已添加完善的错误捕获)
         async function sendCmd(topic, command) {
-            let url = `https://api.bemfa.com/api/device/v1/data/1/push/get/?uid=${UID}&topic=${topic}&msg=${command}`;
+            let url = `https://api.bemfa.com/api/device/v1/data/3/push/get/?uid=${UID}&topic=${topic}&msg=${command}`;
             try {
-                let response = await fetch(url);
+                let response = await fetch(url, { cache: 'no-store' });
                 if(response.ok) {
                     let deviceName = topic === "classrelay002" ? "风扇" : "窗帘";
                     console.log(`[HTTP 强控] 已向 ${deviceName} 发送指令: ${command}`);
@@ -195,10 +196,9 @@
             }
         }
 
-        // 页面加载完成后，立刻拉取一次数据，并开启定时轮询
         window.onload = function() {
-            fetchCloudData(); // 马上执行一次
-            setInterval(fetchCloudData, 3000); // 之后每 3 秒刷新一次
+            fetchCloudData(); 
+            setInterval(fetchCloudData, 3000); 
         };
     </script>
 </body>
