@@ -140,7 +140,7 @@
         <div class="card">
             <div class="card-title">
                 <span><i class="fas fa-list-alt"></i> 打卡历史记录</span>
-                <span style="font-size: 12px; font-weight: normal; color: #7f8c8d;">本地实时抓取</span>
+                <span style="font-size: 12px; font-weight: normal; color: #7f8c8d;">同步硬件时间戳</span>
             </div>
             <div class="history-list" id="history-list">
                 <div style="text-align: center; color: #bdc3c7; padding: 20px 0; font-size: 14px;" id="empty-hint">
@@ -156,8 +156,8 @@
     const TOPIC_DATA = "classdata";
     const TOPIC_RFID = "classRFID";
 
-    // 新增：记录上一次打卡的数据，避免重复添加历史记录
-    let lastRfidData = null; 
+    // 【重要修改】使用 ESP32 传上来的精确时间作为防重复的唯一标识
+    let lastEspTime = null; 
 
     function setOnlineStatus(isOnline) {
         const statusDiv = document.getElementById('conn-status');
@@ -170,7 +170,7 @@
         }
     }
 
-    // 新增：添加历史记录的函数
+    // 添加历史记录的函数
     function addHistoryRecord(name, timeStr) {
         const historyList = document.getElementById('history-list');
         const emptyHint = document.getElementById('empty-hint');
@@ -192,7 +192,7 @@
         historyList.insertBefore(newItem, historyList.firstChild);
     }
 
-    // ==================== 完整修复版 fetchCloudData ====================
+    // ==================== 核心数据抓取逻辑 ====================
     async function fetchCloudData() {
         try {
             // === 1. 实时环境数据 ===
@@ -213,34 +213,38 @@
                 }
             }
 
-            // === 2. 最新考勤记录及历史记录逻辑 ===
+            // === 2. 【核心修改】最新考勤记录及历史记录逻辑 ===
             let resRfid = await fetch(`https://api.bemfa.com/api/device/v1/data/3/get/?uid=${UID}&topic=${TOPIC_RFID}&num=1`, { cache: 'no-store' });
             let jsonRfid = await resRfid.json();
             
             if (jsonRfid.data) {
-                let currentRfid = jsonRfid.data;
-                
-                // 判断是否是新的打卡记录（防重复判断）
-                if (currentRfid !== lastRfidData) {
-                    // 获取当前抓取到数据的时间
-                    let now = new Date();
-                    let timeStr = now.toLocaleTimeString(); // 例如: "15:30:50"
-                    // 如果你需要包含日期，可以使用 now.toLocaleString()
+                try {
+                    // 解析 ESP32 发来的 JSON 字符串，例如：{"name":"Chen Jiangkai", "time":"2026-04-05 15:39:01"}
+                    let rfidPayload = JSON.parse(jsonRfid.data);
+                    let currentName = rfidPayload.name;
+                    let currentEspTime = rfidPayload.time; // 获取 ESP32 硬件生成的精确时间
+                    
+                    // 判断依据：只要 ESP32 的硬件时间戳发生了变化，就算作一次全新的打卡
+                    if (currentEspTime !== lastEspTime && currentName !== "" && currentName !== "Unknown Card") {
+                        
+                        // 为了让历史列表更简洁，我们可以截掉前面的日期，只保留时分秒 (比如 15:39:01)
+                        // 取 "2026-04-05 15:39:01" 按照空格分割的第二部分
+                        let displayTime = currentEspTime.includes(" ") ? currentEspTime.split(" ")[1] : currentEspTime;
 
-                    // 1. 更新卡片显示的最新状态
-                    document.getElementById('val-rfid').innerText = currentRfid;
-                    document.getElementById('val-rfid-time').innerText = "打卡时间: " + timeStr;
+                        // 1. 更新卡片显示的最新状态
+                        document.getElementById('val-rfid').innerText = currentName;
+                        document.getElementById('val-rfid-time').innerText = "打卡时间: " + currentEspTime;
 
-                    // 2. 添加到历史记录列表
-                    // 注意：首次加载网页时，会把云端残留的最后一次记录当作当前打卡记录写入历史
-                    addHistoryRecord(currentRfid, timeStr);
+                        // 2. 添加到历史记录列表
+                        addHistoryRecord(currentName, displayTime);
 
-                    // 3. 更新对比变量
-                    lastRfidData = currentRfid;
+                        // 3. 更新对比变量，用于下一次 3 秒后的轮询比对
+                        lastEspTime = currentEspTime;
+                    }
+                } catch (e) {
+                    // 加入异常捕获：防止巴法云里残留着旧版代码发出的纯文本名字导致 JSON 解析报错
+                    console.warn("考勤数据解析 JSON 失败 (可能是旧格式残留):", jsonRfid.data);
                 }
-            } else {
-                document.getElementById('val-rfid').innerText = "等待刷卡...";
-                document.getElementById('val-rfid-time').innerText = "打卡时间: --:--:--";
             }
 
             setOnlineStatus(true);
