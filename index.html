@@ -156,7 +156,7 @@
     const TOPIC_DATA = "classdata";
     const TOPIC_RFID = "classRFID";
 
-    // 【重要修改】使用 ESP32 传上来的精确时间作为防重复的唯一标识
+    // 使用 ESP32 传上来的精确时间作为防重复的唯一标识
     let lastEspTime = null; 
 
     function setOnlineStatus(isOnline) {
@@ -213,23 +213,22 @@
                 }
             }
 
-            // === 2. 【核心修改】最新考勤记录及历史记录逻辑 ===
+            // === 2. 最新考勤记录及历史记录逻辑 ===
             let resRfid = await fetch(`https://api.bemfa.com/api/device/v1/data/3/get/?uid=${UID}&topic=${TOPIC_RFID}&num=1`, { cache: 'no-store' });
             let jsonRfid = await resRfid.json();
             
             if (jsonRfid.data) {
                 try {
-                    // 解析 ESP32 发来的 JSON 字符串，例如：{"name":"Chen Jiangkai", "time":"2026-04-05 15:39:01"}
+                    // 解析 ESP32 发来的 JSON 字符串
                     let rfidPayload = JSON.parse(jsonRfid.data);
                     let currentName = rfidPayload.name;
-                    let currentEspTime = rfidPayload.time; // 获取 ESP32 硬件生成的精确时间
+                    let currentEspTime = rfidPayload.time; 
                     
-                    // 判断依据：只要 ESP32 的硬件时间戳发生了变化，就算作一次全新的打卡
                     if (currentEspTime !== lastEspTime && currentName !== "" && currentName !== "Unknown Card") {
                         
-                        // 为了让历史列表更简洁，我们可以截掉前面的日期，只保留时分秒 (比如 15:39:01)
-                        // 取 "2026-04-05 15:39:01" 按照空格分割的第二部分
-                        let displayTime = currentEspTime.includes(" ") ? currentEspTime.split(" ")[1] : currentEspTime;
+                        // 【修改点】：这里不再截取时间，直接使用包含日期的完整字符串
+                        // 这样就会显示成类似 "2026-04-05 15:39:01"
+                        let displayTime = currentEspTime;
 
                         // 1. 更新卡片显示的最新状态
                         document.getElementById('val-rfid').innerText = currentName;
@@ -238,11 +237,10 @@
                         // 2. 添加到历史记录列表
                         addHistoryRecord(currentName, displayTime);
 
-                        // 3. 更新对比变量，用于下一次 3 秒后的轮询比对
+                        // 3. 更新对比变量
                         lastEspTime = currentEspTime;
                     }
                 } catch (e) {
-                    // 加入异常捕获：防止巴法云里残留着旧版代码发出的纯文本名字导致 JSON 解析报错
                     console.warn("考勤数据解析 JSON 失败 (可能是旧格式残留):", jsonRfid.data);
                 }
             }
@@ -262,13 +260,8 @@
             if(response.ok) {
                 let deviceName = topic === "classrelay002" ? "风扇" : "窗帘";
                 console.log(`[HTTP 强控] 已向 ${deviceName} 发送指令: ${command}`);
-                let btnText = command === "on" ? "已发送开启" : (command === "off" ? "已发送关闭" : "已发送自动");
-                alert(`✅ 指令 [${btnText}] 已成功发送至硬件！\n设备名: ${deviceName}`);
-            } else {
-                alert("❌ 控制指令发送失败，服务器响应异常！");
-            }
+            } 
         } catch (error) {
-            alert("❌ 控制指令发送失败，请检查网络！");
             console.error(error);
         }
     }
@@ -276,7 +269,7 @@
     // ==================== 页面加载 & 自动刷新 ====================
     window.onload = function() {
         fetchCloudData(); 
-        setInterval(fetchCloudData, 3000);   // 每3秒自动刷新一次
+        setInterval(fetchCloudData, 3000); 
     };
 </script>
 </body>
