@@ -41,6 +41,19 @@
         .rfid-name { font-size: 22px; font-weight: bold; color: var(--success); }
         .rfid-time { font-size: 14px; color: #95a5a6; margin-top: 5px; }
 
+        /* 打卡历史列表新增样式 */
+        .history-list { max-height: 200px; overflow-y: auto; padding-right: 5px; }
+        .history-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px dashed #eee; font-size: 14px; }
+        .history-item:last-child { border-bottom: none; }
+        .history-item .h-name { font-weight: bold; color: var(--dark); }
+        .history-item .h-time { color: #7f8c8d; font-size: 12px; }
+        
+        /* 滚动条美化 */
+        .history-list::-webkit-scrollbar { width: 6px; }
+        .history-list::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        .history-list::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+        .history-list::-webkit-scrollbar-thumb:hover { background: #999; }
+
         /* 控制按钮 */
         .control-group { margin-bottom: 20px; }
         .control-label { font-weight: bold; margin-bottom: 10px; display: block; }
@@ -123,13 +136,28 @@
                 <div class="rfid-time" id="val-rfid-time">--:--:--</div>
             </div>
         </div>
+
+        <div class="card">
+            <div class="card-title">
+                <span><i class="fas fa-list-alt"></i> 打卡历史记录</span>
+                <span style="font-size: 12px; font-weight: normal; color: #7f8c8d;">本地实时抓取</span>
+            </div>
+            <div class="history-list" id="history-list">
+                <div style="text-align: center; color: #bdc3c7; padding: 20px 0; font-size: 14px;" id="empty-hint">
+                    暂无打卡记录...
+                </div>
+            </div>
+        </div>
     </div>
 
 <script>
-    // === 巴法云配置（保持不变）===
+    // === 巴法云配置 ===
     const UID = "8a4623632890437b916c4e67770cfd29"; 
     const TOPIC_DATA = "classdata";
     const TOPIC_RFID = "classRFID";
+
+    // 新增：记录上一次打卡的数据，避免重复添加历史记录
+    let lastRfidData = null; 
 
     function setOnlineStatus(isOnline) {
         const statusDiv = document.getElementById('conn-status');
@@ -142,15 +170,37 @@
         }
     }
 
+    // 新增：添加历史记录的函数
+    function addHistoryRecord(name, timeStr) {
+        const historyList = document.getElementById('history-list');
+        const emptyHint = document.getElementById('empty-hint');
+        
+        // 如果有“暂无记录”的提示，移除它
+        if (emptyHint) {
+            emptyHint.remove();
+        }
+
+        // 创建新的记录条目
+        const newItem = document.createElement('div');
+        newItem.className = 'history-item';
+        newItem.innerHTML = `
+            <span class="h-name"><i class="fas fa-user-check" style="color: var(--success); margin-right: 5px;"></i>${name}</span>
+            <span class="h-time"><i class="far fa-clock" style="margin-right: 3px;"></i>${timeStr}</span>
+        `;
+        
+        // 将新记录插入到列表的最前面
+        historyList.insertBefore(newItem, historyList.firstChild);
+    }
+
     // ==================== 完整修复版 fetchCloudData ====================
     async function fetchCloudData() {
         try {
-            // === 1. 实时环境数据（已适配新版巴法云 API）===
+            // === 1. 实时环境数据 ===
             let resData = await fetch(`https://api.bemfa.com/api/device/v1/data/3/get/?uid=${UID}&topic=${TOPIC_DATA}&num=1`, { cache: 'no-store' });
             let jsonData = await resData.json();
             
             if (jsonData.data) {
-                let rawMsg = jsonData.data;                    // 新版：data 直接是字符串
+                let rawMsg = jsonData.data;
                 try {
                     let payload = JSON.parse(rawMsg);
                     document.getElementById('val-temp').innerText = payload.temp.toFixed(1) + " ℃";
@@ -163,13 +213,31 @@
                 }
             }
 
-            // === 2. 最新考勤记录（已适配新版巴法云 API）===
+            // === 2. 最新考勤记录及历史记录逻辑 ===
             let resRfid = await fetch(`https://api.bemfa.com/api/device/v1/data/3/get/?uid=${UID}&topic=${TOPIC_RFID}&num=1`, { cache: 'no-store' });
             let jsonRfid = await resRfid.json();
             
             if (jsonRfid.data) {
-                document.getElementById('val-rfid').innerText = jsonRfid.data;           // 直接就是姓名字符串
-                document.getElementById('val-rfid-time').innerText = "打卡时间: 最新";   // 新版不再返回 time，可自行扩展
+                let currentRfid = jsonRfid.data;
+                
+                // 判断是否是新的打卡记录（防重复判断）
+                if (currentRfid !== lastRfidData) {
+                    // 获取当前抓取到数据的时间
+                    let now = new Date();
+                    let timeStr = now.toLocaleTimeString(); // 例如: "15:30:50"
+                    // 如果你需要包含日期，可以使用 now.toLocaleString()
+
+                    // 1. 更新卡片显示的最新状态
+                    document.getElementById('val-rfid').innerText = currentRfid;
+                    document.getElementById('val-rfid-time').innerText = "打卡时间: " + timeStr;
+
+                    // 2. 添加到历史记录列表
+                    // 注意：首次加载网页时，会把云端残留的最后一次记录当作当前打卡记录写入历史
+                    addHistoryRecord(currentRfid, timeStr);
+
+                    // 3. 更新对比变量
+                    lastRfidData = currentRfid;
+                }
             } else {
                 document.getElementById('val-rfid').innerText = "等待刷卡...";
                 document.getElementById('val-rfid-time').innerText = "打卡时间: --:--:--";
@@ -182,7 +250,7 @@
         }
     }
 
-    // ==================== 控制指令发送（保持原样，无需修改）====================
+    // ==================== 控制指令发送 ====================
     async function sendCmd(topic, command) {
         let url = `https://api.bemfa.com/api/device/v1/data/3/push/get/?uid=${UID}&topic=${topic}&msg=${command}`;
         try {
